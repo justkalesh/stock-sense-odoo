@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MANAGER
+  STAFF
+}
+
+enum LocationType {
+  INTERNAL
+  VENDOR
+  CUSTOMER
+  LOSS
+}
+
+enum OperationType {
+  RECEIPT
+  DELIVERY
+  INTERNAL
+  ADJUSTMENT
+}
+
+enum OperationStatus {
+  DRAFT
+  WAITING
+  READY
+  DONE
+  CANCELED
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  loginId      String    @unique @map("login_id")
+  name         String
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         UserRole  @default(STAFF)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  otpHash    String?   @map("otp_hash")
+  otpExpires DateTime? @map("otp_expires")
+
+  operations Operation[] @relation("OperationResponsible")
+  stockMoves StockMove[] @relation("StockMoveUser")
+
+  @@map("users")
+}
+
+model Warehouse {
+  id        Int     @id @default(autoincrement())
+  name      String
+  shortCode String  @unique @map("short_code")
+  address   String?
+
+  locations Location[]
+  operations Operation[]
+  sequences OperationSequence[]
+
+  @@map("warehouses")
+}
+
+model Location {
+  id          Int          @id @default(autoincrement())
+  name        String
+  shortCode   String?      @map("short_code")
+  fullName    String?      @map("full_name")
+  type        LocationType
+  warehouseId Int?         @map("warehouse_id")
+  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  operationsAsSource Operation[] @relation("OperationSource")
+  operationsAsDest   Operation[] @relation("OperationDest")
+  movesAsSource      StockMove[] @relation("StockMoveSource")
+  movesAsDest        StockMove[] @relation("StockMoveDest")
+  quants             Quant[]
+
+  @@unique([warehouseId, shortCode])
+  @@map("locations")
+}
+
+model Category {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id         Int       @id @default(autoincrement())
+  sku        String    @unique
+  name       String
+  categoryId Int?      @map("category_id")
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  uom        String    @default("Units")
+  unitCost   Decimal   @default(0.00) @map("unit_cost") @db.Decimal(12, 2)
+  reorderMin Int       @default(0) @map("reorder_min")
+  reorderMax Int       @default(0) @map("reorder_max")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  operationLines OperationLine[]
+  stockMoves     StockMove[]
+  quants         Quant[]
+
+  @@map("products")
+}
+
+model Operation {
+  id              Int             @id @default(autoincrement())
+  reference       String          @unique
+  type            OperationType
+  status          OperationStatus @default(DRAFT)
+  warehouseId     Int?            @map("warehouse_id")
+  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  contact         String?
+  deliveryAddress String?         @map("delivery_address")
+  sourceLocId     Int             @map("source_loc_id")
+  sourceLoc       Location        @relation("OperationSource", fields: [sourceLocId], references: [id])
+  destLocId       Int             @map("dest_loc_id")
+  destLoc         Location        @relation("OperationDest", fields: [destLocId], references: [id])
+  scheduledDate   DateTime        @map("scheduled_date")
+  doneDate        DateTime?       @map("done_date")
+  responsibleId   Int?            @map("responsible_id")
+  responsible     User?           @relation("OperationResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  note            String?
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  lines      OperationLine[]
+  stockMoves StockMove[]
+
+  @@index([status])
+  @@index([scheduledDate])
+  @@map("operations")
+}
+
+model OperationLine {
+  id          Int       @id @default(autoincrement())
+  operationId Int       @map("operation_id")
+  operation   Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  productId   Int       @map("product_id")
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity    Int
+
+  @@unique([operationId, productId])
+  @@map("operation_lines")
+}
+
+model StockMove {
+  id          Int        @id @default(autoincrement())
+  operationId Int?       @map("operation_id")
+  operation   Operation? @relation(fields: [operationId], references: [id], onDelete: SetNull)
+  reference   String
+  productId   Int        @map("product_id")
+  product     Product    @relation(fields: [productId], references: [id])
+  sourceLocId Int        @map("source_loc_id")
+  sourceLoc   Location   @relation("StockMoveSource", fields: [sourceLocId], references: [id])
+  destLocId   Int        @map("dest_loc_id")
+  destLoc     Location   @relation("StockMoveDest", fields: [destLocId], references: [id])
+  quantity    Int
+  userId      Int?       @map("user_id")
+  user        User?      @relation("StockMoveUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@index([sourceLocId, destLocId])
+  @@map("stock_moves")
+}
+
+model Quant {
+  productId  Int      @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId Int      @map("location_id")
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  quantity   Int      @default(0)
+
+  @@id([productId, locationId])
+  @@map("quants")
+}
+
+model OperationSequence {
+  warehouseId   Int           @map("warehouse_id")
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  operationType OperationType @map("operation_type")
+  nextVal       Int           @default(1) @map("next_val")
+
+  @@id([warehouseId, operationType])
+  @@map("operation_sequences")
+}

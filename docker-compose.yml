@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: stocksense-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stocksense
+      POSTGRES_PASSWORD: stocksense
+      POSTGRES_DB: stocksense
+    ports:
+      - "5432:5432"
+    volumes:
+      - stocksense_pgdata:/var/lib/postgresql/data
+
+volumes:
+  stocksense_pgdata:
