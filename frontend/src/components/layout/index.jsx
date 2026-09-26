@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../../store/StoreProvider';
 import { useGo } from '../../hooks/useGo';
 import { COL } from '../../lib/constants';
@@ -104,11 +104,13 @@ export function SettingsLayout({ active, children }) {
 
 /* AppLayout — wraps authenticated pages with Navbar + main */
 export function AppLayout() {
+  const { pathname } = useLocation();
   return (
     <>
       <Navbar />
       <main style={{ padding: 24, maxWidth: 1440, margin: "0 auto" }}>
-        <Outlet />
+        {/* Keyed by path: routes sharing a page component (/receipts vs /deliveries, /receipts/new vs /operations/:id) would otherwise keep stale state */}
+        <Outlet key={pathname} />
       </main>
     </>
   );

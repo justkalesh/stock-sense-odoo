@@ -5,7 +5,7 @@ import { useGo } from '../../hooks/useGo';
 import { COL, PENDING, TYPE_LABEL } from '../../lib/constants';
 import { fmtDate, fmtDT, fmtQty, toInput, fromInput } from '../../lib/format';
 import {
-  prod, loc, userName, internalLocs, virtualId, freeAt, shortLines,
+  prod, loc, userName, internalLocs, virtualId, freeAt, shortLines, isLate,
   createOp, updateOp, todoOp, validateOp, checkAvail, cancelOp, signed,
 } from '../../lib/engine';
 import { Badge, Pill, LateTag, Field, ReadVal, PName } from '../../components/ui';
