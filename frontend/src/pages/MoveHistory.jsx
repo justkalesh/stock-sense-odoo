@@ -69,7 +69,7 @@ export default function MoveHistory() {
         ) : <Empty icon={History} title="No movements match" sub="Try clearing the filters." />}
       </div>
     ) : (
-      <div className="flex gap-3" style={{ overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+      <div className="kanban">
         {["DRAFT", "WAITING", "READY", "DONE", "CANCELED"].map((s) => { const items = rows.filter((r) => r.o.status === s); return (
           <div key={s} className="kcol">
             <div className="flex items-center justify-between" style={{ padding: "2px 4px" }}>

@@ -1,24 +1,21 @@
 import { useState } from 'react';
 import { useStore } from '../store/StoreProvider';
-import { useGo } from '../hooks/useGo';
 import { COL } from '../lib/constants';
 import { fmtDate, initials } from '../lib/format';
-import { fail } from '../lib/engine';
 import { PageHeader } from '../components/layout';
 import { Pill, Field, ReadVal, PwInput, RuleList, pwOk } from '../components/ui';
 import { Pencil, Lock, LogOut } from 'lucide-react';
 
 export default function Profile() {
-  const { run, toast, user, logout, resetDemo } = useStore();
-  const go = useGo();
+  const { act, toast, user, logout } = useStore();
   const [name, setName] = useState(user.name); const [edit, setEdit] = useState(false); const [pw, setPw] = useState({ c: "", a: "", b: "" });
-  const saveName = () => { const r = run((d) => { if (!name.trim()) fail("Name is required"); d.users.find((u) => u.id === user.id).name = name.trim(); }); if (r.ok) { toast("Profile updated"); setEdit(false); } };
+  const saveName = async () => { const r = await act("PATCH", "/me", { name }); if (r.ok) { toast("Profile updated"); setEdit(false); } };
   const pwReady = pw.c && pwOk(pw.a) && pw.a === pw.b;
-  const changePw = (e) => {
+  const changePw = async (e) => {
     if (e) e.preventDefault();
-    if (!pwReady) return; const r = run((d) => { const u = d.users.find((x) => x.id === user.id);
-    if (u.password !== pw.c) fail("Current password is incorrect"); u.password = pw.a; });
-    if (r.ok) { toast("Password updated"); setPw({ c: "", a: "", b: "" }); }
+    if (!pwReady) return;
+    const r = await act("POST", "/me/password", { current: pw.c, next: pw.a });
+    if (r.ok) { toast("Password updated. Other devices were signed out."); setPw({ c: "", a: "", b: "" }); }
   };
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -49,7 +46,6 @@ export default function Profile() {
       </form>
       <div className="flex items-center gap-3" style={{ marginTop: 16 }}>
         <button type="button" className="btn bd" onClick={logout}><LogOut size={16} />Log out</button>
-        <button type="button" className="btn bg bsm" onClick={resetDemo}>Reset demo data</button>
       </div>
     </div>
   );

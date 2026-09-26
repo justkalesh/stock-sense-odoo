@@ -4,6 +4,8 @@
 
 This document covers **what the user sees and can do**. Backend details live in `phases.md`.
 
+> **Implementation note (26 Sep 2026).** The screens described here are built in `frontend/`. They're backed by the Express + Postgres API in `backend/`. For setup, deployment and architecture, see [`README.md`](README.md). For what's done and what's left, see [`phases.md`](phases.md). Where the build intentionally differs from this spec, the difference is noted inline below.
+
 ---
 
 ## Table of Contents
@@ -403,7 +405,9 @@ Each screen is described by **Purpose → Layout → Elements → Functionality 
 
 ### 5.2 Sign Up
 
-**Layout:** the same card as Login, with fields Login ID, Email, Password and Re-enter Password.
+**Layout:** the same card as Login, with fields **Account type** (Manager / Staff segmented control, Staff selected by default, with a one-line description of each), Login ID, Email, Password and Re-enter Password.
+
+> *Built:* the account type is chosen at signup, as requested for the demo. Before real users, restrict Manager signup (see `phases.md`, D4).
 
 **Live validation.** The rules are shown **before** the user fails them, not after.
 
@@ -829,6 +833,19 @@ WH/INT/0001    13 Jan 2026   —                WH/Stock1   WH/RackA    ⇄ 10 S
 | ≥ 1280px | Full layout (the demo target) |
 | 1024–1279px | The dashboard's two cards stack their secondary counts; tables hide the Category and UoM columns |
 | 768–1023px (tablet, warehouse staff) | The navbar collapses to a ☰ drawer. Tables become card lists. Kanban scrolls horizontally with snap. Buttons are 44px tall. |
+
+> *Built (see `frontend/src/styles/index.css`, "Layout helpers + responsive"):*
+> - **Below 900px,** the navbar collapses to a ☰ button that opens a left drawer grouping Main, Operations and Settings. It closes on navigation, on Esc and on a tap outside.
+> - **Below 768px:**
+>   - Page padding drops to 12–16px.
+>   - Tables scroll sideways within their card instead of stretching the page. Card lists are still open.
+>   - Kanban columns take 80% of the width and snap.
+>   - Status tabs scroll sideways.
+>   - The dashboard stacks, with KPIs in a 2-column grid.
+>   - Form fields and settings navigation stack.
+>   - The inline stock editor opens as a bottom sheet.
+>   - Drawers go full width, and toasts span the screen.
+> - **Checked:** at 375px, no page is wider than the screen.
 | < 768px | Best-effort: a single column; forms stack their field pairs |
 
 > **Designer's note:** Warehouse staff realistically use tablets on the floor, so tablet is the second priority after desktop. Mention this in the demo.
@@ -836,6 +853,15 @@ WH/INT/0001    13 Jan 2026   —                WH/Stock1   WH/RackA    ⇄ 10 S
 ---
 
 ## 9. Frontend Folder Structure & Build Order
+
+> *Built:* the actual app lives in `frontend/src/`, with a lighter structure than the one planned below:
+> - `store/StoreProvider.jsx` handles the session, the data snapshot and `act()` for every change.
+> - `lib/api.js` is the fetch wrapper, instead of `api/*` and axios.
+> - `lib/engine.js` holds the read-only selectors.
+> - `components/{ui,layout,domain}/index.jsx` hold the components.
+> - Toasts are built in rather than from react-hot-toast.
+>
+> TanStack Query and Zod shared schemas are still in the `phases.md` roadmap. The layout below is the original plan.
 
 ```
 client/src/

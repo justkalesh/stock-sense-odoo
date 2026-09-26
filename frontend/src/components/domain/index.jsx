@@ -7,7 +7,6 @@ import { STATUS, COL, UOMS, PENDING, TYPE_LABEL } from '../../lib/constants';
 import { fmtDate, fmtDT, fmtQty, inr, toInput } from '../../lib/format';
 import {
   prod, loc, qtyAt, internalLocs, freeAt, freeTotal, onHand, dirOf, DIR_COLOR, signed, isOut,
-  adjust, saveProduct, saveWarehouse, saveLocation, fail,
 } from '../../lib/engine';
 import {
   Badge, Pill, PName, LateTag, Field, ReadVal, Drawer, Modal,
@@ -22,7 +21,7 @@ export function StatusBar({ kind, status }) {
   const steps = kind === "RECEIPT" ? ["DRAFT", "READY", "DONE"] : ["DRAFT", "WAITING", "READY", "DONE"];
   const cur = steps.indexOf(status);
   return (
-    <div className="flex items-center" aria-label={`Status: ${STATUS[status].label}`}>
+    <div className="flex items-center statusbar" aria-label={`Status: ${STATUS[status].label}`}>
       {steps.map((s, i) => (
         <div key={s} className="flex items-center">
           {i > 0 && <span style={{ width: 18, height: 1, background: i <= cur ? "var(--t3)" : "var(--b2)" }} />}
@@ -128,7 +127,7 @@ export function LineEditor({ f, setF, editable, outgoing, op }) {
 
 /* StockPopover */
 export function StockPopover({ p, whId, onClose }) {
-  const { db, run, toast, user } = useStore();
+  const { db, act, toast } = useStore();
   const ref = useRef(null); useOutside(ref, onClose); useEsc(onClose);
   const locs = internalLocs(db, whId);
   const [lid, setLid] = useState(() => (locs.slice().sort((a, b) => qtyAt(db, p.id, b.id) - qtyAt(db, p.id, a.id))[0] || locs[0]).id);
@@ -136,10 +135,10 @@ export function StockPopover({ p, whId, onClose }) {
   const [c, setC] = useState(String(cur));
   const diff = c === "" ? 0 : Number(c) - cur;
   const ok = c !== "" && diff !== 0 && !isNaN(diff);
-  const save = () => { if (!ok) return; const r = run((d) => adjust(d, { productId: p.id, locationId: lid, counted: c, reason: "Count correction" }, user.id));
-    if (r.ok) { toast(`${p.name} ${fmtQty(cur)} → ${fmtQty(Number(c))} · Logged as ${r.res.op.reference}`); onClose(); } };
+  const save = async () => { if (!ok) return; const r = await act("POST", "/adjustments", { productId: p.id, locationId: lid, counted: Number(c), reason: "Count correction" });
+    if (r.ok) { toast(`${p.name} ${fmtQty(cur)} → ${fmtQty(Number(c))} · Logged as ${r.res.reference}`); onClose(); } };
   return (
-    <div ref={ref} className="menu" style={{ right: 0, top: "calc(100% - 4px)", width: 300, padding: 16, textAlign: "left", cursor: "default" }} onClick={(e) => e.stopPropagation()}>
+    <div ref={ref} className="menu pop" style={{ right: 0, top: "calc(100% - 4px)", width: 300, padding: 16, textAlign: "left", cursor: "default" }} onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center justify-between" style={{ marginBottom: 12 }}><span style={{ fontWeight: 600 }}>Update stock</span><span className="mono t2" style={{ fontSize: 12 }}>{p.sku}</span></div>
       <div className="flex flex-col gap-3">
         <Field label="Location"><select className="inp mono" value={lid} onChange={(e) => { const v = Number(e.target.value); setLid(v); setC(String(qtyAt(db, p.id, v))); }}>
@@ -158,7 +157,7 @@ export function StockPopover({ p, whId, onClose }) {
 
 /* ProductDrawer */
 export function ProductDrawer({ pid, onClose, onEdit, canDelete }) {
-  const { db, run, toast } = useStore();
+  const { db, act, toast } = useStore();
   const go = useGo();
   const p = prod(db, pid);
   const [rule, setRule] = useState({ min: String(p?.reorderMin ?? 0), max: String(p?.reorderMax ?? 0) });
@@ -166,9 +165,8 @@ export function ProductDrawer({ pid, onClose, onEdit, canDelete }) {
   const byLoc = internalLocs(db).map((l) => ({ l, oh: qtyAt(db, p.id, l.id), fr: freeAt(db, p.id, l.id) })).filter((x) => x.oh !== 0 || x.fr !== 0);
   const moves = db.moves.filter((m) => m.productId === p.id).slice(0, 5);
   const hasHistory = db.operations.some((o) => o.lines.some((l) => l.productId === p.id));
-  const saveRule = () => { const r = run((d) => { const mn = Number(rule.min), mx = Number(rule.max); if (mn < 0 || mx < 0 || isNaN(mn) || isNaN(mx)) fail("Enter valid numbers"); if (mx && mx < mn) fail("Max must be at least min");
-    const x = prod(d, p.id); x.reorderMin = mn; x.reorderMax = mx; }); if (r.ok) toast("Reordering rule saved"); };
-  const del = () => { const r = run((d) => { d.products = d.products.filter((x) => x.id !== p.id); }); if (r.ok) { toast(`${p.name} deleted`, "info"); onClose(); } };
+  const saveRule = async () => { const r = await act("PATCH", `/products/${p.id}/reorder`, { min: rule.min, max: rule.max }); if (r.ok) toast("Reordering rule saved"); };
+  const del = async () => { const r = await act("DELETE", `/products/${p.id}`); if (r.ok) { toast(`${p.name} deleted`, "info"); onClose(); } };
   return (
     <Drawer title={<span><span className="mono t2">[{p.sku}]</span> {p.name}</span>} onClose={onClose}
       footer={<><button type="button" className="btn bd" disabled={!canDelete || hasHistory} title={!canDelete ? "Only managers can do this" : hasHistory ? "Products with stock history can't be deleted" : "Delete"} onClick={del}><Trash2 size={15} />Delete</button>
@@ -199,14 +197,14 @@ export function ProductDrawer({ pid, onClose, onEdit, canDelete }) {
 
 /* ProductModal */
 export function ProductModal({ product, onClose }) {
-  const { db, run, toast, user } = useStore();
+  const { db, act, toast } = useStore();
   const internals = internalLocs(db);
   const [f, setF] = useState(() => product
     ? { id: product.id, name: product.name, sku: product.sku, category: db.categories.find((c) => c.id === product.categoryId)?.name || "", uom: product.uom, unitCost: String(product.unitCost), reorderMin: String(product.reorderMin), reorderMax: String(product.reorderMax) }
     : { name: "", sku: "", category: "", uom: "Units", unitCost: "", initial: "", locationId: internals[0].id, reorderMin: "", reorderMax: "" });
   const [newCat, setNewCat] = useState(false);
   const skuTaken = f.sku && db.products.some((p) => p.sku === f.sku.trim().toUpperCase() && p.id !== f.id);
-  const save = () => { const r = run((d) => saveProduct(d, f, user.id));
+  const save = async () => { const r = await (product ? act("PATCH", `/products/${product.id}`, f) : act("POST", "/products", f));
     if (r.ok) { toast(product ? `${f.name} updated` : `${f.name} created${r.res.ref ? ` · opening stock via ${r.res.ref}` : ""}`); onClose(); } };
   const s = (k) => (e) => setF({ ...f, [k]: e.target.value });
   return (
@@ -238,16 +236,16 @@ export function ProductModal({ product, onClose }) {
 
 /* AdjustDrawer */
 export function AdjustDrawer({ onClose }) {
-  const { db, run, toast, user } = useStore();
+  const { db, act, toast } = useStore();
   const internals = internalLocs(db);
   const [f, setF] = useState({ productId: "", locationId: internals[0].id, counted: "", reason: "Damaged" });
   const p = prod(db, Number(f.productId));
   const rec = p ? qtyAt(db, p.id, Number(f.locationId)) : null;
   const diff = f.counted === "" || rec === null ? null : Number(f.counted) - rec;
   const valid = p && diff !== null && diff !== 0 && !isNaN(diff);
-  const apply = () => {
-    const r = run((d) => adjust(d, { productId: Number(f.productId), locationId: Number(f.locationId), counted: f.counted, reason: f.reason }, user.id));
-    if (r.ok) { toast(`${p.name} adjusted ${diff > 0 ? "+" : "−"}${fmtQty(Math.abs(diff))} ${p.uom} · ${r.res.op.reference}`); onClose(); }
+  const apply = async () => {
+    const r = await act("POST", "/adjustments", { productId: Number(f.productId), locationId: Number(f.locationId), counted: Number(f.counted), reason: f.reason });
+    if (r.ok) { toast(`${p.name} adjusted ${diff > 0 ? "+" : "−"}${fmtQty(Math.abs(diff))} ${p.uom} · ${r.res.reference}`); onClose(); }
   };
   return (
     <Drawer title="New Adjustment" onClose={onClose} footer={<><button type="button" className="btn bs" onClick={onClose}>Cancel</button><button type="button" className="btn bp" disabled={!valid} onClick={apply}>Apply Adjustment</button></>}>
@@ -275,10 +273,10 @@ export function AdjustDrawer({ onClose }) {
 
 /* WarehouseDrawer */
 export function WarehouseDrawer({ w, onClose }) {
-  const { db, run, toast } = useStore();
+  const { db, act, toast } = useStore();
   const [f, setF] = useState({ id: w?.id, name: w?.name || "", shortCode: w?.shortCode || "", address: w?.address || "" });
   const locked = w && db.operations.some((o) => o.warehouseId === w.id);
-  const save = () => { const r = run((d) => saveWarehouse(d, f)); if (r.ok) { toast(`${f.name} saved${w ? "" : ` · location ${f.shortCode.toUpperCase()}/Stock created`}`); onClose(); } };
+  const save = async () => { const r = await (w ? act("PATCH", `/warehouses/${w.id}`, f) : act("POST", "/warehouses", f)); if (r.ok) { toast(`${f.name} saved${w ? "" : ` · location ${f.shortCode.toUpperCase()}/Stock created`}`); onClose(); } };
   return (
     <Drawer title={w ? "Edit Warehouse" : "New Warehouse"} onClose={onClose} footer={<><button type="button" className="btn bs" onClick={onClose}>Cancel</button><button type="button" className="btn bp" onClick={save} disabled={!f.name.trim() || !f.shortCode.trim()}>Save</button></>}>
       <div className="flex flex-col gap-4">
@@ -295,10 +293,10 @@ export function WarehouseDrawer({ w, onClose }) {
 
 /* LocationDrawer */
 export function LocationDrawer({ l, onClose }) {
-  const { db, run, toast } = useStore();
+  const { db, act, toast } = useStore();
   const [f, setF] = useState({ id: l?.id, name: l?.name || "", shortCode: l?.shortCode || "", warehouseId: l?.warehouseId || db.warehouses[0]?.id });
   const wh = db.warehouses.find((w) => w.id === Number(f.warehouseId));
-  const save = () => { const r = run((d) => saveLocation(d, f)); if (r.ok) { toast(`${r.res.fullName} saved`); onClose(); } };
+  const save = async () => { const r = await (l ? act("PATCH", `/locations/${l.id}`, f) : act("POST", "/locations", f)); if (r.ok) { toast(`${r.res.fullName} saved`); onClose(); } };
   return (
     <Drawer title={l ? "Edit Location" : "New Location"} onClose={onClose} footer={<><button type="button" className="btn bs" onClick={onClose}>Cancel</button><button type="button" className="btn bp" onClick={save} disabled={!f.name.trim() || !f.shortCode.trim()}>Save</button></>}>
       <div className="flex flex-col gap-4">

@@ -9,5 +9,5 @@ export const toInput = (t) => { const d = new Date(t); return `${d.getFullYear()
 export const fromInput = (s) => { if (!s) return null; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 10).getTime(); };
 export const inr = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const inr0 = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
-export const fmtQty = (n) => Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+export const fmtQty = (n) => Number(n).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 export const initials = (n = "") => n.split(/\s+/).filter(Boolean).map((s) => s[0]).slice(0, 2).join("").toUpperCase() || "?";

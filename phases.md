@@ -1,14 +1,14 @@
 # StockSense: Phase Plan
 
-> **Scope:** backend, frontend integration and production readiness. Phase 1 (the frontend prototype) is done.
+> **Scope:** backend, frontend integration and production readiness.
 > This is the `phases.md` that `frontend_spec.md` refers to for backend details. Its phase numbers replace the ones in `frontend_spec.md` §9, which described the original combined build order.
-> Status as of 26 Sep 2026.
+> **Status (26 Sep 2026, afternoon):** Phase 1 is done. The demo-critical parts of Phases 2–4 are built and tested, plus a mobile layout pass. See [Progress](#progress). Setup and deployment are in [`README.md`](README.md).
 
 ---
 
 ## Contents
 
-1. [Where We Are](#where-we-are)
+1. [Where We Are](#where-we-are) · [Progress](#progress)
 2. [Target Architecture](#target-architecture)
 3. [Decisions to Settle First](#decisions-to-settle-first)
 4. [Phase 2: Backend Foundation](#phase-2-backend-foundation)
@@ -24,7 +24,9 @@
 
 ## Where We Are
 
-| Area | State |
+This section records the state at the start of the day. For what has changed since, see [Progress](#progress).
+
+| Area | State (morning of 26 Sep) |
 |---|---|
 | Frontend | All 16 screens built (React 19, Vite 8, Tailwind 4). Data lives in `localStorage`. `src/lib/engine.js` holds every business rule. |
 | Backend | Prisma schema, the `init` migration, and Postgres 17 in `docker-compose.yml`. No server code yet. |
@@ -35,11 +37,11 @@
 - Routes that render the same page component kept stale state. "New" on a saved operation opened pre-filled with that operation's data, and Operations → Deliveries from the Receipts list still showed receipts. `AppLayout` now remounts the page on every path change.
 
 **Known issues carried into this plan** (each is handled below)
-- Moving a draft to another warehouse's location keeps the old reference prefix. See D6.
+- Moving a draft to another warehouse's location keeps the old reference prefix. See D6. *Now blocked on the server with a clear message; the UI still lists every warehouse's locations.*
 - The dashboard's Type and Status filters only filter the Recent table. See 3.4.
-- The navbar's active state reads `window.location` instead of the router. See Phase 4.
+- ~~The navbar's active state reads `window.location` instead of the router.~~ *Fixed.*
 - Only the initial `?tab=` is read from the URL. See Phase 4.
-- The production build is a single 737 kB chunk. See Phase 6.
+- The production build is a single ~730 kB chunk. See Phase 6.
 
 **Regression baseline.** With the demo seed, the prototype dashboard shows the numbers below. The backend's demo seed must produce the same numbers (test in 3.5).
 
@@ -48,6 +50,41 @@
 | Receipt card | 2 to receive · 1 late · 2 operations |
 | Delivery card | 1 to deliver · 1 late · 1 waiting · 2 operations |
 | KPIs | 6 in stock · 2 low · 1 out of stock · 1 transfer scheduled · 226 units on hand |
+
+### Progress
+
+**Built and tested on 26 Sep 2026**
+
+| Phase | Done | Still open |
+|---|---|---|
+| 2 Foundation | ESM config and scripts; schema v2 (decimals, sessions, OTP fields, Restrict deletes, CHECK constraints, indexes); env config; error shape; bootstrap + demo seed; full auth (signup with role choice, login, logout, OTP reset via Gmail, profile, password change); Vercel config for Express | Rate limiting; `helmet`; ESLint |
+| 3 Inventory API | Every `engine.js` command ported to `backend/src/inventory.ts`, running Serializable with retry; atomic references; the warehouse can't change on drafts (D6); a manager-only guard | Per-screen paginated read endpoints (the UI uses one snapshot, below); automated test suite in the repo |
+| 4 Frontend integration | `lib/api.js`; `StoreProvider` swaps localStorage for the API; every change goes through `act()`; login redirects back to the page you wanted; demo-only code removed (browser seed, Reset demo data); navbar reads the router; Vite proxy + Vercel rewrite | TanStack Query, URL-synced filters, loading skeletons |
+| 6 (partial) Mobile | Hamburger navigation below 900px; phones under 768px get swipeable tables and kanban, a bottom-sheet stock editor, stacked dashboard and forms, and full-width drawers | Card-list tables for tablets, focus traps |
+
+**How Phase 4 was simplified for the deadline.** Instead of per-screen endpoints, every API response returns the whole dataset snapshot (`backend/src/snapshot.ts`) in the shape the existing selectors read. Page code barely changed, and the server still owns every rule. Moving to paginated endpoints (3.4) is the main follow-up once data grows past a few thousand operations.
+
+**Verified.** An API test script ran 30 checks against a local Postgres on the clean demo seed, and all passed:
+- the golden dashboard numbers
+- decimal quantities
+- double-validate rejected
+- Waiting → Ready promotion when stock arrives
+- two concurrent To Do requests leaving exactly one Ready
+- Staff 403 on Manager actions
+- duplicate signup errors
+- the full OTP reset flow (wrong-code attempts, single-use token, sessions revoked)
+
+In the browser, I also checked login redirect, validating an operation, the mobile menu, and that no page is wider than a 375px screen. Turning that script into a committed test suite is the first Phase 5 task.
+
+**Decisions made** (see the table below for the options)
+- **D1:** quantities are decimals, `Decimal(12,3)`.
+- **D2:** deferred. `scheduled_date` stays a timestamp, and "late" is computed in the browser's timezone.
+- **D3:** database sessions in an httpOnly cookie.
+- **D4, changed:** users choose Manager or Staff at signup. Before real users, restrict Manager signup.
+- **D5, D6:** as recommended. D6 is enforced on the server.
+- **D7:** not yet. Products with history can't be deleted; archiving comes later.
+- **D8:** Vercel (two projects: `backend/` as Express, `frontend/` as Vite) + Neon Postgres.
+- **D9:** Gmail App Password via Nodemailer. Move to a transactional provider for production.
 
 ---
 
@@ -63,7 +100,7 @@ Express 5 + TypeScript
 PostgreSQL 17   quants = current stock · stock_moves = append-only ledger
 ```
 
-- **One origin.** In production, Express serves both `/api/*` and the built frontend. In development, Vite proxies `/api` to Express on port 4000. With a single origin, cookie auth works without CORS or cross-site cookie settings.
+- **One origin.** On Vercel, `frontend/vercel.json` rewrites `/api/*` to the backend project, so the browser only sees the frontend's domain. In development, Vite proxies `/api` to Express on port 4000. With a single origin, cookie auth works without CORS or cross-site cookie settings.
 - **`engine.js` is the specification.** Each function that changes data becomes one service function running in one transaction. The read helpers (`freeAt`, `onHand`, `isLate`) become SQL.
 - **The server owns rules and computed values**, such as free stock, "late" and permissions. The UI displays what the server returns and does not recompute it.
 

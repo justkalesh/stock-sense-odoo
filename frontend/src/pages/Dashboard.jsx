@@ -62,14 +62,14 @@ export default function Dashboard() {
         stats={[["Late", D.late, COL.red, () => go("opList", { type: "DELIVERY", preset: "LATE" })], ["Waiting", D.waiting, COL.amber, () => go("opList", { type: "DELIVERY", preset: "WAITING" })],
           ["Operations", D.upcoming, null, () => go("opList", { type: "DELIVERY", preset: "UPCOMING" })]]} />
     </div>
-    <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", marginTop: 16 }}>
+    <div className="kpis">
       <Kpi label="Products in stock" value={inStock} icon={Boxes} onClick={() => go("stock")} />
       <Kpi label="Low stock" value={low} icon={AlertTriangle} color={low ? COL.amber : null} onClick={() => go("stock", { preset: "low" })} />
       <Kpi label="Out of stock" value={out} icon={PackageX} color={out ? COL.red : null} onClick={() => go("stock", { preset: "low" })} />
       <Kpi label="Transfers scheduled" value={transfers} icon={ArrowLeftRight} onClick={() => go("opList", { type: "DELIVERY", kind: "INTERNAL" })} />
       <Kpi label="Total units on hand" value={fmtQty(units)} onClick={() => go("stock")} />
     </div>
-    <div className="grid gap-4" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(280px,1fr)", marginTop: 16 }}>
+    <div className="dash-split">
       <div className="card">
         <div className="card-h"><div className="h-sec">Recent Operations</div><button type="button" className="lnk" style={{ fontSize: 13 }} onClick={() => go("moves")}>View all →</button></div>
         {recent.length ? (

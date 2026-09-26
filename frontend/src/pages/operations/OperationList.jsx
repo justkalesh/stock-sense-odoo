@@ -66,7 +66,7 @@ export default function OperationList({ type, kind: k0 }) {
             action={<button type="button" className="btn bp" onClick={() => go("opForm", { type: kind })}><Plus size={16} />New {kind === "RECEIPT" ? "Receipt" : kind === "DELIVERY" ? "Delivery" : "Internal Transfer"}</button>} />}
       </div>
     ) : (<>
-      <div className="flex gap-3" style={{ overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+      <div className="kanban">
         {[...cols, ...(showCanceled ? ["CANCELED"] : [])].map((s) => { const items = searched.filter((o) => o.status === s); return (
           <div key={s} className="kcol">
             <div className="flex items-center justify-between" style={{ padding: "2px 4px" }}>

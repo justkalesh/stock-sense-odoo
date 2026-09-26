@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 enum UserRole {
@@ -43,13 +44,29 @@ model User {
   role         UserRole  @default(STAFF)
   createdAt    DateTime  @default(now()) @map("created_at")
 
-  otpHash    String?   @map("otp_hash")
-  otpExpires DateTime? @map("otp_expires")
+  otpHash           String?   @map("otp_hash")
+  otpExpires        DateTime? @map("otp_expires")
+  otpAttempts       Int       @default(0) @map("otp_attempts")
+  otpSentAt         DateTime? @map("otp_sent_at")
+  resetTokenHash    String?   @map("reset_token_hash")
+  resetTokenExpires DateTime? @map("reset_token_expires")
 
+  sessions   Session[]
   operations Operation[] @relation("OperationResponsible")
   stockMoves StockMove[] @relation("StockMoveUser")
 
   @@map("users")
+}
+
+model Session {
+  id        String   @id // SHA-256 of the cookie token; the raw token is never stored
+  userId    Int      @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("sessions")
 }
 
 model Warehouse {
@@ -58,9 +75,9 @@ model Warehouse {
   shortCode String  @unique @map("short_code")
   address   String?
 
-  locations Location[]
+  locations  Location[]
   operations Operation[]
-  sequences OperationSequence[]
+  sequences  OperationSequence[]
 
   @@map("warehouses")
 }
@@ -69,10 +86,10 @@ model Location {
   id          Int          @id @default(autoincrement())
   name        String
   shortCode   String?      @map("short_code")
-  fullName    String?      @map("full_name")
+  fullName    String       @map("full_name")
   type        LocationType
   warehouseId Int?         @map("warehouse_id")
-  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
 
   operationsAsSource Operation[] @relation("OperationSource")
   operationsAsDest   Operation[] @relation("OperationDest")
@@ -100,9 +117,10 @@ model Product {
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   uom        String    @default("Units")
   unitCost   Decimal   @default(0.00) @map("unit_cost") @db.Decimal(12, 2)
-  reorderMin Int       @default(0) @map("reorder_min")
-  reorderMax Int       @default(0) @map("reorder_max")
+  reorderMin Decimal   @default(0) @map("reorder_min") @db.Decimal(12, 3)
+  reorderMax Decimal   @default(0) @map("reorder_max") @db.Decimal(12, 3)
   createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   operationLines OperationLine[]
   stockMoves     StockMove[]
@@ -116,8 +134,8 @@ model Operation {
   reference       String          @unique
   type            OperationType
   status          OperationStatus @default(DRAFT)
-  warehouseId     Int?            @map("warehouse_id")
-  warehouse       Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  warehouseId     Int             @map("warehouse_id")
+  warehouse       Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
   contact         String?
   deliveryAddress String?         @map("delivery_address")
   sourceLocId     Int             @map("source_loc_id")
@@ -130,12 +148,15 @@ model Operation {
   responsible     User?           @relation("OperationResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
   note            String?
   createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
   lines      OperationLine[]
   stockMoves StockMove[]
 
   @@index([status])
   @@index([scheduledDate])
+  @@index([type, status])
+  @@index([warehouseId])
   @@map("operations")
 }
 
@@ -144,10 +165,11 @@ model OperationLine {
   operationId Int       @map("operation_id")
   operation   Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
   productId   Int       @map("product_id")
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity    Int
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Decimal   @db.Decimal(12, 3)
 
   @@unique([operationId, productId])
+  @@index([productId])
   @@map("operation_lines")
 }
 
@@ -162,22 +184,24 @@ model StockMove {
   sourceLoc   Location   @relation("StockMoveSource", fields: [sourceLocId], references: [id])
   destLocId   Int        @map("dest_loc_id")
   destLoc     Location   @relation("StockMoveDest", fields: [destLocId], references: [id])
-  quantity    Int
+  quantity    Decimal    @db.Decimal(12, 3)
   userId      Int?       @map("user_id")
   user        User?      @relation("StockMoveUser", fields: [userId], references: [id], onDelete: SetNull)
   createdAt   DateTime   @default(now()) @map("created_at")
 
   @@index([productId])
   @@index([sourceLocId, destLocId])
+  @@index([createdAt])
+  @@index([operationId])
   @@map("stock_moves")
 }
 
 model Quant {
   productId  Int      @map("product_id")
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   locationId Int      @map("location_id")
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  quantity   Int      @default(0)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  quantity   Decimal  @default(0) @db.Decimal(12, 3)
 
   @@id([productId, locationId])
   @@map("quants")

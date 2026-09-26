@@ -83,4 +83,47 @@ select.inp option{background:#27272C;color:#EDEDEF}
 .doc table{width:100%;border-collapse:collapse}.doc th,.doc td{border-bottom:1px solid #ddd;padding:8px 10px;text-align:left;font-size:13px}
 .doc th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#555}
 @media print{.no-print{display:none!important}.ss{background:#fff!important}.doc{box-shadow:none!important;margin:0!important}}
-@media (prefers-reduced-motion:reduce){.drawer,.toast,.menu,.shake{animation:none}}
+
+/* ---------- Layout helpers + responsive (tablet < 900px, phone < 768px) ---------- */
+.page{padding:24px;max-width:1440px;margin:0 auto}
+.dash-split{display:grid;gap:16px;margin-top:16px;grid-template-columns:minmax(0,2fr) minmax(280px,1fr)}
+.kpis{display:grid;gap:16px;margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start}
+.statusbar{max-width:100%;overflow-x:auto}
+.settings-wrap{display:flex;gap:24px}
+.settings-nav{width:200px;flex-shrink:0}
+.nav-burger{display:none}
+.mnav{position:fixed;top:56px;left:0;bottom:0;width:min(300px,85vw);background:var(--s3);border-right:1px solid var(--b2);z-index:80;padding:12px;overflow-y:auto;animation:slin .16s ease-out}
+.mnav .upper{padding:12px 10px 4px}
+.mnav .mi.on{background:var(--s2);box-shadow:inset 2px 0 0 var(--ac)}
+@media (max-width:899px){
+  .nav{padding:0 12px;gap:8px}
+  .nav-links{display:none!important}
+  .nav-burger{display:inline-flex;align-self:center}
+}
+@media (max-width:767px){
+  .page{padding:16px 12px}
+  .h-title{font-size:18px;line-height:26px}
+  .dash-split{grid-template-columns:minmax(0,1fr)}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  /* wide tables scroll sideways instead of stretching the page */
+  .tbl{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tbl th,.tbl td{white-space:nowrap;padding:0 12px}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;gap:18px;scrollbar-width:none}
+  .kanban{scroll-snap-type:x mandatory}
+  .kcol{min-width:80vw;scroll-snap-align:start}
+  .settings-wrap{flex-direction:column;gap:12px}
+  .settings-nav{width:auto;display:flex;gap:4px;overflow-x:auto}
+  .settings-nav .upper{display:none}
+  .settings-nav .mi{width:auto;white-space:nowrap}
+  .form-card{padding:16px!important}
+  .auth-card{padding:20px!important}
+  .otp{width:40px;height:50px;font-size:20px}
+  .srch{flex:1 1 200px}
+  .toasts{left:12px;right:12px;top:64px}
+  .toast{min-width:0;max-width:none}
+  /* the inline stock editor becomes a bottom sheet so it isn't clipped by the scrolling table */
+  .pop{position:fixed!important;left:12px!important;right:12px!important;top:auto!important;bottom:12px!important;width:auto!important;z-index:90}
+  .drawer{width:100vw}
+}
+@media (prefers-reduced-motion:reduce){.drawer,.toast,.menu,.shake,.mnav{animation:none}}

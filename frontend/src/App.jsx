@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useStore } from './store/StoreProvider';
 import { Toasts, ConfirmDialog } from './components/ui';
 import { AppLayout } from './components/layout';
@@ -18,15 +18,25 @@ import NotFound from './pages/NotFound';
 import Warehouses from './pages/settings/Warehouses';
 import Locations from './pages/settings/Locations';
 
+const Booting = () => <div className="t3" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>Loading StockSense…</div>;
+
 function ProtectedRoute({ children }) {
-  const { user } = useStore();
-  if (!user) return <Navigate to="/login" replace />;
+  const { user, booting } = useStore();
+  const { pathname, search } = useLocation();
+  if (booting) return <Booting />;
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(pathname + search)}`} replace />;
   return children;
 }
 
 function GuestRoute({ children }) {
-  const { user } = useStore();
-  if (user) return <Navigate to="/" replace />;
+  const { user, booting } = useStore();
+  const [params] = useSearchParams();
+  if (booting) return <Booting />;
+  if (user) {
+    const next = params.get("next") || "/";
+    // Only same-site paths, so ?next= can't bounce users to another domain
+    return <Navigate to={next.startsWith("/") && !next.startsWith("//") ? next : "/"} replace />;
+  }
   return children;
 }
 

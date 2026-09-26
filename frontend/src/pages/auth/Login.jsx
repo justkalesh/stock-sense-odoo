@@ -1,20 +1,27 @@
 import { useState } from 'react';
 import { useStore } from '../../store/StoreProvider';
 import { useGo } from '../../hooks/useGo';
+import { api } from '../../lib/api';
 import { AuthShell } from '../../components/layout';
 import { Field, PwInput } from '../../components/ui';
 import { AlertCircle } from 'lucide-react';
 
 export default function Login() {
-  const { db, login } = useStore();
+  const { signIn } = useStore();
   const go = useGo();
   const [f, setF] = useState({ id: "", pw: "" }); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false);
-  const submit = (e) => {
+  const submit = async (e) => {
     if (e) e.preventDefault();
     if (!f.id || !f.pw || busy) return;
     setErr(""); setBusy(true);
-    const u = db.users.find((x) => x.loginId.toLowerCase() === f.id.trim().toLowerCase() && x.password === f.pw);
-    setTimeout(() => { setBusy(false); if (!u) { setErr("Invalid Login ID or Password."); setF((s) => ({ ...s, pw: "" })); return; } login(u); go("dashboard"); }, 300);
+    try {
+      signIn(await api("POST", "/auth/login", { loginId: f.id.trim(), password: f.pw }));
+    } catch (x) {
+      setErr(x.status === 401 ? "Invalid Login ID or Password." : x.message);
+      setF((s) => ({ ...s, pw: "" }));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <AuthShell>

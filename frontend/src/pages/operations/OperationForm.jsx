@@ -5,8 +5,7 @@ import { useGo } from '../../hooks/useGo';
 import { COL, PENDING, TYPE_LABEL } from '../../lib/constants';
 import { fmtDate, fmtDT, fmtQty, toInput, fromInput } from '../../lib/format';
 import {
-  prod, loc, userName, internalLocs, virtualId, freeAt, shortLines, isLate,
-  createOp, updateOp, todoOp, validateOp, checkAvail, cancelOp, signed,
+  prod, loc, userName, internalLocs, virtualId, freeAt, shortLines, isLate, signed,
 } from '../../lib/engine';
 import { Badge, Pill, LateTag, Field, ReadVal, PName } from '../../components/ui';
 import { StatusBar, LineEditor } from '../../components/domain';
@@ -16,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export default function OperationForm({ type: propType }) {
-  const { db, run, toast, user, ask } = useStore();
+  const { db, act, toast, user, ask } = useStore();
   const go = useGo();
   const { id: paramId } = useParams();
   const location = useLocation();
@@ -58,16 +57,18 @@ export default function OperationForm({ type: propType }) {
 
   const shortText = (l) => { const p = prod(db, Number(l.productId)); const fr = Math.max(freeAt(db, p.id, Number(f.sourceLocId), op?.id), 0); return { p, fr, gap: Number(l.quantity) - fr }; };
 
-  const save = () => {
-    const r = run((d) => op ? updateOp(d, op.id, payload()) : createOp(d, payload(), user.id));
+  // Create or update the draft (optionally marking it To Do) in one server transaction
+  const persist = (extra) => op ? act("PATCH", `/operations/${op.id}`, { ...payload(), ...extra }) : act("POST", "/operations", { ...payload(), ...extra });
+  const save = async () => {
+    const r = await persist();
     if (r.ok) { toast(`${r.res.reference} saved as Draft`); if (!op) go("opForm", { id: r.res.id }); }
   };
-  const todo = () => {
-    const r = run((d) => { const o = op ? updateOp(d, op.id, payload()) : createOp(d, payload(), user.id); todoOp(d, o.id); return { o, short: shortLines(d, o) }; });
+  const todo = async () => {
+    const r = await persist({ todo: true });
     if (!r.ok) return;
-    const { o, short } = r.res;
+    const o = r.db.operations.find((x) => x.id === r.res.id);
     if (o.status === "READY") toast(`${o.reference} is Ready${kind === "RECEIPT" ? " to receive" : ""}`);
-    else toast(`${o.reference} is Waiting for stock · ${short.map((l) => prod(r.db, l.productId).name).join(", ")}`, "info");
+    else toast(`${o.reference} is Waiting for stock · ${shortLines(r.db, o).map((l) => prod(r.db, l.productId).name).join(", ")}`, "info");
     if (!op) go("opForm", { id: o.id });
   };
   const validate = () => ask({
@@ -75,16 +76,16 @@ export default function OperationForm({ type: propType }) {
     body: kind === "RECEIPT" ? `This will add ${fmtQty(units)} items to ${loc(db, op.destLocId).fullName}.`
       : kind === "DELIVERY" ? `This will remove ${fmtQty(units)} items from ${loc(db, op.sourceLocId).fullName}.`
         : `This will move ${fmtQty(units)} items from ${loc(db, op.sourceLocId).fullName} to ${loc(db, op.destLocId).fullName}.`,
-    onYes: () => {
-      const r = run((d) => validateOp(d, op.id, user.id));
+    onYes: async () => {
+      const r = await act("POST", `/operations/${op.id}/validate`);
       if (!r.ok) return;
       toast(`${op.reference} validated · ${op.lines.map((l) => `${prod(db, l.productId).name} ${signed(dir, l.quantity)}`).join(", ")}`);
       if (r.res.promoted.length) setTimeout(() => toast(`Stock arrived · now Ready: ${r.res.promoted.join(", ")}`, "info"), 300);
     },
   });
-  const recheck = () => { const r = run((d) => checkAvail(d, op.id)); if (r.ok) toast(r.res.status === "READY" ? `${op.reference} is now Ready` : "Still waiting for stock", r.res.status === "READY" ? "success" : "info"); };
+  const recheck = async () => { const r = await act("POST", `/operations/${op.id}/check`); if (r.ok) toast(r.res.status === "READY" ? `${op.reference} is now Ready` : "Still waiting for stock", r.res.status === "READY" ? "success" : "info"); };
   const cancel = () => op ? ask({ title: `Cancel ${op.reference}?`, body: "This can't be undone. Reserved stock will be released.", confirm: "Cancel operation", danger: true,
-    onYes: () => { const r = run((d) => cancelOp(d, op.id)); if (r.ok) toast(`${op.reference} canceled`, "info"); } }) : backList();
+    onYes: async () => { const r = await act("POST", `/operations/${op.id}/cancel`); if (r.ok) toast(`${op.reference} canceled`, "info"); } }) : backList();
   const pickOk = kind !== "DELIVERY" || (pick.picked && pick.packed);
   const locSel = (key) => editable
     ? <select className="inp mono" value={f[key]} onChange={(e) => set(key, Number(e.target.value))}>{internals.map((l) => <option key={l.id} value={l.id}>{l.fullName}</option>)}</select>
@@ -115,7 +116,7 @@ export default function OperationForm({ type: propType }) {
         </div>
         <StatusBar kind={kind} status={status === "NEW" ? "DRAFT" : status} />
       </div>
-      <div className="card" style={{ padding: 24 }}>
+      <div className="card form-card" style={{ padding: 24 }}>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="mono" style={{ fontSize: 24, lineHeight: "32px", fontWeight: 600, textDecoration: status === "CANCELED" ? "line-through" : "none" }}>{op ? op.reference : <span className="t3">New</span>}</div>
           {op && isLate(op) && <LateTag />}

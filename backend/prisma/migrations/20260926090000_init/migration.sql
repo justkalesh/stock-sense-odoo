@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('MANAGER', 'STAFF');
 
@@ -21,8 +24,22 @@ CREATE TABLE "users" (
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "otp_hash" TEXT,
     "otp_expires" TIMESTAMP(3),
+    "otp_attempts" INTEGER NOT NULL DEFAULT 0,
+    "otp_sent_at" TIMESTAMP(3),
+    "reset_token_hash" TEXT,
+    "reset_token_expires" TIMESTAMP(3),
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "sessions" (
+    "id" TEXT NOT NULL,
+    "user_id" INTEGER NOT NULL,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "sessions_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -40,7 +57,7 @@ CREATE TABLE "locations" (
     "id" SERIAL NOT NULL,
     "name" TEXT NOT NULL,
     "short_code" TEXT,
-    "full_name" TEXT,
+    "full_name" TEXT NOT NULL,
     "type" "LocationType" NOT NULL,
     "warehouse_id" INTEGER,
 
@@ -63,9 +80,10 @@ CREATE TABLE "products" (
     "category_id" INTEGER,
     "uom" TEXT NOT NULL DEFAULT 'Units',
     "unit_cost" DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-    "reorder_min" INTEGER NOT NULL DEFAULT 0,
-    "reorder_max" INTEGER NOT NULL DEFAULT 0,
+    "reorder_min" DECIMAL(12,3) NOT NULL DEFAULT 0,
+    "reorder_max" DECIMAL(12,3) NOT NULL DEFAULT 0,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "products_pkey" PRIMARY KEY ("id")
 );
@@ -76,7 +94,7 @@ CREATE TABLE "operations" (
     "reference" TEXT NOT NULL,
     "type" "OperationType" NOT NULL,
     "status" "OperationStatus" NOT NULL DEFAULT 'DRAFT',
-    "warehouse_id" INTEGER,
+    "warehouse_id" INTEGER NOT NULL,
     "contact" TEXT,
     "delivery_address" TEXT,
     "source_loc_id" INTEGER NOT NULL,
@@ -86,6 +104,7 @@ CREATE TABLE "operations" (
     "responsible_id" INTEGER,
     "note" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "operations_pkey" PRIMARY KEY ("id")
 );
@@ -95,7 +114,7 @@ CREATE TABLE "operation_lines" (
     "id" SERIAL NOT NULL,
     "operation_id" INTEGER NOT NULL,
     "product_id" INTEGER NOT NULL,
-    "quantity" INTEGER NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
 
     CONSTRAINT "operation_lines_pkey" PRIMARY KEY ("id")
 );
@@ -108,7 +127,7 @@ CREATE TABLE "stock_moves" (
     "product_id" INTEGER NOT NULL,
     "source_loc_id" INTEGER NOT NULL,
     "dest_loc_id" INTEGER NOT NULL,
-    "quantity" INTEGER NOT NULL,
+    "quantity" DECIMAL(12,3) NOT NULL,
     "user_id" INTEGER,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -119,7 +138,7 @@ CREATE TABLE "stock_moves" (
 CREATE TABLE "quants" (
     "product_id" INTEGER NOT NULL,
     "location_id" INTEGER NOT NULL,
-    "quantity" INTEGER NOT NULL DEFAULT 0,
+    "quantity" DECIMAL(12,3) NOT NULL DEFAULT 0,
 
     CONSTRAINT "quants_pkey" PRIMARY KEY ("product_id","location_id")
 );
@@ -138,6 +157,9 @@ CREATE UNIQUE INDEX "users_login_id_key" ON "users"("login_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE INDEX "sessions_user_id_idx" ON "sessions"("user_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "warehouses_short_code_key" ON "warehouses"("short_code");
@@ -161,6 +183,15 @@ CREATE INDEX "operations_status_idx" ON "operations"("status");
 CREATE INDEX "operations_scheduled_date_idx" ON "operations"("scheduled_date");
 
 -- CreateIndex
+CREATE INDEX "operations_type_status_idx" ON "operations"("type", "status");
+
+-- CreateIndex
+CREATE INDEX "operations_warehouse_id_idx" ON "operations"("warehouse_id");
+
+-- CreateIndex
+CREATE INDEX "operation_lines_product_id_idx" ON "operation_lines"("product_id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "operation_lines_operation_id_product_id_key" ON "operation_lines"("operation_id", "product_id");
 
 -- CreateIndex
@@ -169,14 +200,23 @@ CREATE INDEX "stock_moves_product_id_idx" ON "stock_moves"("product_id");
 -- CreateIndex
 CREATE INDEX "stock_moves_source_loc_id_dest_loc_id_idx" ON "stock_moves"("source_loc_id", "dest_loc_id");
 
+-- CreateIndex
+CREATE INDEX "stock_moves_created_at_idx" ON "stock_moves"("created_at");
+
+-- CreateIndex
+CREATE INDEX "stock_moves_operation_id_idx" ON "stock_moves"("operation_id");
+
 -- AddForeignKey
-ALTER TABLE "locations" ADD CONSTRAINT "locations_warehouse_id_fkey" FOREIGN KEY ("warehouse_id") REFERENCES "warehouses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "locations" ADD CONSTRAINT "locations_warehouse_id_fkey" FOREIGN KEY ("warehouse_id") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "products" ADD CONSTRAINT "products_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "categories"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "operations" ADD CONSTRAINT "operations_warehouse_id_fkey" FOREIGN KEY ("warehouse_id") REFERENCES "warehouses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "operations" ADD CONSTRAINT "operations_warehouse_id_fkey" FOREIGN KEY ("warehouse_id") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "operations" ADD CONSTRAINT "operations_source_loc_id_fkey" FOREIGN KEY ("source_loc_id") REFERENCES "locations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -191,7 +231,7 @@ ALTER TABLE "operations" ADD CONSTRAINT "operations_responsible_id_fkey" FOREIGN
 ALTER TABLE "operation_lines" ADD CONSTRAINT "operation_lines_operation_id_fkey" FOREIGN KEY ("operation_id") REFERENCES "operations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "operation_lines" ADD CONSTRAINT "operation_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "operation_lines" ADD CONSTRAINT "operation_lines_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "stock_moves" ADD CONSTRAINT "stock_moves_operation_id_fkey" FOREIGN KEY ("operation_id") REFERENCES "operations"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -209,10 +249,18 @@ ALTER TABLE "stock_moves" ADD CONSTRAINT "stock_moves_dest_loc_id_fkey" FOREIGN 
 ALTER TABLE "stock_moves" ADD CONSTRAINT "stock_moves_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "quants" ADD CONSTRAINT "quants_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "quants" ADD CONSTRAINT "quants_product_id_fkey" FOREIGN KEY ("product_id") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "quants" ADD CONSTRAINT "quants_location_id_fkey" FOREIGN KEY ("location_id") REFERENCES "locations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "quants" ADD CONSTRAINT "quants_location_id_fkey" FOREIGN KEY ("location_id") REFERENCES "locations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "operation_sequences" ADD CONSTRAINT "operation_sequences_warehouse_id_fkey" FOREIGN KEY ("warehouse_id") REFERENCES "warehouses"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+-- Data integrity guards (Prisma can't express CHECK constraints)
+ALTER TABLE "operation_lines" ADD CONSTRAINT "operation_lines_quantity_positive" CHECK ("quantity" > 0);
+ALTER TABLE "stock_moves" ADD CONSTRAINT "stock_moves_quantity_positive" CHECK ("quantity" > 0);
+ALTER TABLE "quants" ADD CONSTRAINT "quants_quantity_non_negative" CHECK ("quantity" >= 0);
+ALTER TABLE "operations" ADD CONSTRAINT "operations_distinct_locations" CHECK ("source_loc_id" <> "dest_loc_id");
+ALTER TABLE "products" ADD CONSTRAINT "products_non_negative" CHECK ("unit_cost" >= 0 AND "reorder_min" >= 0 AND "reorder_max" >= 0);
